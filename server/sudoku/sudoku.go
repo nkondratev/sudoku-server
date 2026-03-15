@@ -100,15 +100,26 @@ func findEmptyCell(grid [][]int) (int, int, error) {
 }
 
 func PrettyPrint(grid [][]int) {
-	for i := range grid {
-		for j := range grid[i] {
+	size := len(grid)
+	box := 3
+
+	for i := range size {
+		if i%box == 0 && i != 0 {
+			fmt.Println("------+-------+------")
+		}
+
+		for j := range size {
+			if j%box == 0 && j != 0 {
+				fmt.Print("| ")
+			}
+
 			if grid[i][j] == 0 {
-				fmt.Printf(". ")
+				fmt.Print(". ")
 			} else {
-				fmt.Printf("%v ", grid[i][j])
+				fmt.Printf("%d ", grid[i][j])
 			}
 		}
-		fmt.Printf("\n")
+		fmt.Println()
 	}
 }
 
