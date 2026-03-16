@@ -15,8 +15,26 @@ const (
 	Hard   difficulty = 50
 )
 
-func makeGrid(size int) [][]int {
-	grid := make([][]int, size)
+type Sudoku [][]int
+
+func NewPuzzle(solution Sudoku, level int) Sudoku {
+	grid := CopyGrid(solution)
+	removeNumbersUnique(grid, level)
+	return grid
+}
+
+func New(size int) Sudoku {
+	return newSudoku(size)
+}
+
+func NewSolution(size int) Sudoku {
+	s := newSudoku(size)
+	resolveSudoku(s)
+	return s
+}
+
+func newSudoku(size int) Sudoku {
+	grid := make(Sudoku, size)
 	for i := range size {
 		grid[i] = make([]int, size)
 	}
@@ -32,7 +50,7 @@ func CopyGrid(original [][]int) [][]int {
 	return duplicate
 }
 
-func resolveSudoku(grid [][]int) bool {
+func resolveSudoku(grid Sudoku) bool {
 	row, col, err := findEmptyCell(grid)
 	if err != nil {
 		return true
@@ -87,7 +105,7 @@ func validate(grid [][]int, row, col, value int) bool {
 	return true
 }
 
-func findEmptyCell(grid [][]int) (int, int, error) {
+func findEmptyCell(grid Sudoku) (int, int, error) {
 	for r := range grid {
 		for c := range grid[r] {
 			if grid[r][c] == 0 {
@@ -99,7 +117,7 @@ func findEmptyCell(grid [][]int) (int, int, error) {
 	return 0, 0, errors.New("no empty cell")
 }
 
-func PrettyPrint(grid [][]int) {
+func PrettyPrint(grid Sudoku) {
 	size := len(grid)
 	box := 3
 
@@ -121,16 +139,6 @@ func PrettyPrint(grid [][]int) {
 		}
 		fmt.Println()
 	}
-}
-
-func New(size int) [][]int {
-	grid := makeGrid(size)
-	resolveSudoku(grid)
-	return grid
-}
-
-func CreatePuzzle(grid [][]int, level difficulty) {
-	removeNumbersUnique(grid, int(level))
 }
 
 func removeNumbersUnique(grid [][]int, count int) {

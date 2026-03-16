@@ -2,241 +2,166 @@ package main
 
 import (
 	"encoding/json"
-	"flag"
-	"fmt"
-	"io"
 	"log"
-	"net"
 	"net/http"
 	"server/sudoku"
 	"sync"
+	"sync/atomic"
 	"time"
+
+	"github.com/olahol/melody"
 )
 
 const (
-	size         = 9
-	countPlayers = 2
 	gameTime     = 10
+	gridSize     = 9
+	countPlayers = 2
+)
+
+var (
+	rooms    []*Room
+	playerId atomic.Int64
+	roomId   atomic.Int64
+	players  = make(map[*melody.Session]*Player)
+	mu       sync.Mutex
 )
 
 type Player struct {
-	Name        string
-	Conn        net.Conn
-	Lives       int
-	playerBoard sync.Map
+	id     int64
+	lives  int
+	name   string
+	puzzle sudoku.Sudoku
+	conn   *melody.Session
+}
+
+func NewPlayer(name string, s *melody.Session, puzzle sudoku.Sudoku) *Player {
+	playerId.Add(1)
+	copyPuzzle := make(sudoku.Sudoku, len(puzzle))
+	for i := range puzzle {
+		copyPuzzle[i] = make([]int, len(puzzle[i]))
+		copy(copyPuzzle[i], puzzle[i])
+	}
+
+	return &Player{
+		conn:   s,
+		id:     playerId.Load(),
+		lives:  3,
+		name:   name,
+		puzzle: copyPuzzle,
+	}
 }
 
 type Room struct {
-	Players  []*Player
-	Puzzle   [][]int
-	Solution [][]int
-	timer    *time.Ticker
+	id       int64
+	time     *time.Ticker
+	players  []*Player
+	solution sudoku.Sudoku
+	puzzle   sudoku.Sudoku
+}
+
+func NewRoom() *Room {
+	s := sudoku.NewSolution(gridSize)
+	roomId.Add(1)
+	return &Room{
+		id:       roomId.Load(),
+		players:  make([]*Player, countPlayers),
+		solution: s,
+		puzzle:   sudoku.NewPuzzle(s, int(sudoku.Easy)),
+	}
+}
+
+func handleRoom(ch chan *Player, wg *sync.WaitGroup) {
+	defer wg.Done()
+	room := NewRoom()
+	for i := range room.players {
+		room.players[i] = <-ch
+	}
+	rooms = append(rooms, room)
+}
+
+func handleRooms(matchmaking chan *Player) {
+	for {
+		room := NewRoom()
+
+		for i := range countPlayers {
+			room.players[i] = <-matchmaking
+		}
+
+		room.time = time.NewTicker(gameTime * time.Minute)
+		for _, p := range room.players {
+			p.conn.WebsocketConnection().WriteJSON(room.puzzle)
+		}
+		rooms = append(rooms, room)
+		startGame(room)
+	}
+}
+
+func startGame(room *Room) {
+
 }
 
 func main() {
-	secure := flag.Bool("secure", true, "use for enable or disable presetting ip")
-	flag.Parse()
-	var ip = []byte(":8080")
-	if !*secure {
-		resp, err := http.Get("https://ipinfo.io/ip")
+	var matchmaking = make(chan *Player)
+	m := melody.New()
+
+	go handleRooms(matchmaking)
+
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "index.html")
+	})
+
+	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+		m.HandleRequest(w, r)
+	})
+
+	m.HandleConnect(func(s *melody.Session) {
+		empty := sudoku.New(gridSize)
+		player := NewPlayer("1", s, empty)
+
+		mu.Lock()
+		players[s] = player
+		mu.Unlock()
+
+		matchmaking <- player
+		log.Println("wait player")
+	})
+
+	m.HandleDisconnect(func(s *melody.Session) {
+		mu.Lock()
+		delete(players, s)
+		mu.Unlock()
+		log.Println("player disconnect")
+	})
+
+	m.HandleMessage(func(s *melody.Session, msg []byte) {
+		var move MoveDTO
+		err := json.Unmarshal(msg, &move)
 		if err != nil {
-			panic(err)
-		}
-		defer resp.Body.Close()
-
-		ip, err = io.ReadAll(resp.Body)
-		if err != nil {
-			panic(err)
-		}
-		panic("dont secure")
-	}
-
-	fmt.Println(string(ip))
-	players := make(chan *Player, 100)
-
-	ln, err := net.Listen("tcp", string(ip))
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer ln.Close()
-
-	go roomManager(players)
-
-	for {
-		conn, err := ln.Accept()
-		if err != nil {
-			log.Println("Accept error:", err)
-			continue
+			log.Println("invalid move:", err)
+			return
 		}
 
-		go handlePlayer(conn, players)
-	}
-}
+		mu.Lock()
+		player, ok := players[s]
+		mu.Unlock()
+		if !ok {
+			log.Println("player not found")
+			return
+		}
 
-func roomManager(players chan *Player) {
-	for {
-		handleConnection(players)
-	}
-}
+		player.puzzle[move.Row][move.Col] = move.Value
 
-func NewPlayer(conn net.Conn) *Player {
-	return &Player{
-		Conn:        conn,
-		Lives:       3,
-		playerBoard: sync.Map{},
-	}
-}
-
-func handlePlayer(conn net.Conn, ch chan *Player) {
-	fmt.Println("New player connected")
-	ch <- NewPlayer(conn)
-}
-
-func handleConnection(ch chan *Player) {
-	fmt.Println("Creating new room")
-
-	solution := sudoku.New(size)
-	puzzle := sudoku.CopyGrid(solution)
-	sudoku.CreatePuzzle(puzzle, sudoku.Easy)
-
-	room := &Room{
-		Players:  make([]*Player, countPlayers),
-		Puzzle:   puzzle,
-		Solution: solution,
-	}
-	sudoku.PrettyPrint(room.Solution)
-
-	for i := range room.Players {
-		room.Players[i] = <-ch
-	}
-
-	for _, p := range room.Players {
-		json.NewEncoder(p.Conn).Encode(room.Puzzle)
-	}
-
-	room.timer = time.NewTicker(gameTime * time.Minute)
-
-	handleGame(room)
-}
-
-func savePlayerBoard(p *Player, board [][]int) {
-	copied := sudoku.CopyGrid(board)
-	p.playerBoard.Store(p, copied)
-}
-
-func getPlayerBoard(p *Player) [][]int {
-	if v, ok := p.playerBoard.Load(p); ok {
-		return v.([][]int)
-	}
-	return make([][]int, size)
-}
-
-func countCorrectCells(board, solution [][]int) int {
-	count := 0
-	for i := range board {
-		for j := range board[i] {
-			if board[i][j] == solution[i][j] {
-				count++
+		for _, room := range rooms {
+			for _, p := range room.players {
+				if p == player {
+					if move.Value != room.solution[move.Row][move.Col] {
+						player.lives--
+					}
+				}
 			}
 		}
-	}
-	return count
-}
 
-func handleGame(room *Room) {
-	var wg sync.WaitGroup
-
-	for _, player := range room.Players {
-		wg.Add(1)
-
-		go func(p *Player) {
-			defer wg.Done()
-
-			for {
-				select {
-				case <-room.timer.C:
-					fmt.Println("Time is up")
-
-					results := make(map[string]int)
-					for _, pl := range room.Players {
-						results[pl.Name] = countCorrectCells(getPlayerBoard(pl), room.Solution)
-					}
-
-					var winner string
-					max := -1
-					for name, correct := range results {
-						if correct > max {
-							max = correct
-							winner = name
-						}
-					}
-
-					resp := map[string]any{
-						"winner": winner,
-						"scores": results,
-					}
-
-					for _, pl := range room.Players {
-						json.NewEncoder(pl.Conn).Encode(resp)
-						pl.Conn.Close()
-					}
-
-					return
-
-				default:
-				}
-
-				var board [][]int
-				p.Conn.SetReadDeadline(time.Now().Add(time.Second))
-				err := json.NewDecoder(p.Conn).Decode(&board)
-				if err != nil {
-					if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-						continue
-					}
-					log.Println("Player disconnected:", err)
-					p.Conn.Close()
-					return
-				}
-
-				errors, row, column := checkErrors(board, room.Solution)
-				if errors > 0 {
-					p.Lives -= errors
-					fmt.Println("Player lives:", p.Lives)
-					if p.Lives <= 0 {
-						fmt.Println("Player lost:", p.Name)
-						return
-					}
-				}
-
-				savePlayerBoard(p, board)
-
-				resp := map[string]any{
-					"row":    row,
-					"column": column,
-					"lives":  p.Lives,
-					"errors": errors,
-				}
-				json.NewEncoder(p.Conn).Encode(resp)
-			}
-		}(player)
-	}
-
-	wg.Wait()
-}
-
-func checkErrors(board, solution [][]int) (int, int, int) {
-	var row, column int
-	errors := 0
-
-	for i := range size {
-		for j := range size {
-			if board[i][j] != 0 && board[i][j] != solution[i][j] {
-				errors++
-				row = i
-				column = j
-			}
-		}
-	}
-
-	return errors, row, column
+		log.Printf("Player %d made move: row %d, col %d, value %d, lives %d", player.id, move.Row, move.Col, move.Value, player.lives)
+	})
+	http.ListenAndServe(":5000", nil)
 }
