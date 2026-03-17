@@ -5,6 +5,7 @@ type MoveDTO struct {
 	Row      int   `json:"row"`
 	Col      int   `json:"col"`
 	Value    int   `json:"value"`
+	Lives    int   `json:"lives"`
 }
 
 type PuzzleDTO struct {

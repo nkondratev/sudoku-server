@@ -13,35 +13,44 @@ const (
 	Easy   difficulty = 40
 	Medium difficulty = 45
 	Hard   difficulty = 50
+
+	size     = 9
+	GameTime = 10
 )
 
-type Sudoku [][]int
+type Sudoku struct {
+	Grid [][]int
+	Size int
+}
 
-func NewPuzzle(solution Sudoku, level int) Sudoku {
-	grid := CopyGrid(solution)
+func NewSudoku() *Sudoku {
+	return &Sudoku{
+		Grid: makeGrid(),
+		Size: 9,
+	}
+}
+
+func (s Sudoku) NewPuzzle(level difficulty) Sudoku {
+	var grid = *NewSudoku()
+	grid.Grid = copyGrid(s.Grid)
 	removeNumbersUnique(grid, level)
 	return grid
 }
 
-func New(size int) Sudoku {
-	return newSudoku(size)
-}
-
-func NewSolution(size int) Sudoku {
-	s := newSudoku(size)
+func (s Sudoku) NewSolution() Sudoku {
 	resolveSudoku(s)
 	return s
 }
 
-func newSudoku(size int) Sudoku {
-	grid := make(Sudoku, size)
-	for i := range size {
-		grid[i] = make([]int, size)
+func makeGrid() [][]int {
+	grid := make([][]int, 9)
+	for i := range grid {
+		grid[i] = make([]int, 0)
 	}
 	return grid
 }
 
-func CopyGrid(original [][]int) [][]int {
+func copyGrid(original [][]int) [][]int {
 	duplicate := make([][]int, len(original))
 	for i := range original {
 		duplicate[i] = make([]int, len(original[i]))
@@ -56,31 +65,28 @@ func resolveSudoku(grid Sudoku) bool {
 		return true
 	}
 
-	size := len(grid)
 	numbers := rand.Perm(size)
 
 	for _, n := range numbers {
 		value := n + 1
 
-		if !validate(grid, row, col, value) {
+		if !validate(grid.Grid, row, col, value) {
 			continue
 		}
 
-		grid[row][col] = value
+		grid.Grid[row][col] = value
 
 		if resolveSudoku(grid) {
 			return true
 		}
 
-		grid[row][col] = 0
+		grid.Grid[row][col] = 0
 	}
 
 	return false
 }
 
 func validate(grid [][]int, row, col, value int) bool {
-	size := len(grid)
-
 	for i := range size {
 		if grid[row][i] == value {
 			return false
@@ -106,9 +112,9 @@ func validate(grid [][]int, row, col, value int) bool {
 }
 
 func findEmptyCell(grid Sudoku) (int, int, error) {
-	for r := range grid {
-		for c := range grid[r] {
-			if grid[r][c] == 0 {
+	for r := range grid.Grid {
+		for c := range grid.Grid[r] {
+			if grid.Grid[r][c] == 0 {
 				return r, c, nil
 			}
 		}
@@ -118,7 +124,6 @@ func findEmptyCell(grid Sudoku) (int, int, error) {
 }
 
 func PrettyPrint(grid Sudoku) {
-	size := len(grid)
 	box := 3
 
 	for i := range size {
@@ -131,18 +136,17 @@ func PrettyPrint(grid Sudoku) {
 				fmt.Print("| ")
 			}
 
-			if grid[i][j] == 0 {
+			if grid.Grid[i][j] == 0 {
 				fmt.Print(". ")
 			} else {
-				fmt.Printf("%d ", grid[i][j])
+				fmt.Printf("%d ", grid.Grid[i][j])
 			}
 		}
 		fmt.Println()
 	}
 }
 
-func removeNumbersUnique(grid [][]int, count int) {
-	size := len(grid)
+func removeNumbersUnique(grid Sudoku, count difficulty) {
 	total := size * size
 
 	cells := rand.Perm(total)
@@ -154,11 +158,11 @@ func removeNumbersUnique(grid [][]int, count int) {
 
 		r := idx / size
 		c := idx % size
-		backup := grid[r][c]
-		grid[r][c] = 0
+		backup := grid.Grid[r][c]
+		grid.Grid[r][c] = 0
 
 		if countSolutions(grid, 2) > 1 {
-			grid[r][c] = backup
+			grid.Grid[r][c] = backup
 			continue
 		}
 
@@ -166,23 +170,22 @@ func removeNumbersUnique(grid [][]int, count int) {
 	}
 }
 
-func countSolutions(grid [][]int, limit int) int {
+func countSolutions(grid Sudoku, limit int) int {
 	row, col, err := findEmptyCell(grid)
 	if err != nil {
 		return 1
 	}
 
-	size := len(grid)
 	count := 0
 
 	for v := 1; v <= size; v++ {
-		if !validate(grid, row, col, v) {
+		if !validate(grid.Grid, row, col, v) {
 			continue
 		}
 
-		grid[row][col] = v
+		grid.Grid[row][col] = v
 		count += countSolutions(grid, limit)
-		grid[row][col] = 0
+		grid.Grid[row][col] = 0
 
 		if count >= limit {
 			return count

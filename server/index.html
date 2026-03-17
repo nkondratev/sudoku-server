@@ -28,13 +28,14 @@ td input {
 
 <h2>Sudoku</h2>
 <p>Клик по клетке и введи цифру (1–9)</p>
+<p>Жизни: <span id="lives">3</span></p>
 <table id="sudoku"></table>
 
 <script>
 const ws = new WebSocket("ws://localhost:5000/ws");
 
 let grid = []; // локальная копия доски
-let playerID = null; // если нужно использовать ID игрока
+let playerID = null; // при необходимости
 
 ws.onopen = () => {
     console.log("connected to server");
@@ -42,10 +43,22 @@ ws.onopen = () => {
 
 ws.onmessage = (event) => {
     const data = JSON.parse(event.data);
-    console.log("received puzzle:", data);
+    console.log("received:", data);
 
-    // сервер может прислать объект {puzzle: [...]} или просто массив
-    grid = data.puzzle || data;
+    // если сервер прислал количество жизней
+    if (data.lives !== undefined) {
+        updateLives(data.lives);
+    }
+
+    // если сервер прислал ход
+    if (data.row !== undefined && data.col !== undefined && data.value !== undefined) {
+        grid[data.row][data.col] = data.value;
+    }
+
+    // если сервер прислал всю доску
+    if (data.puzzle !== undefined) {
+        grid = data.puzzle;
+    }
 
     drawSudoku(grid);
 };
@@ -100,6 +113,10 @@ function sendMove(row, col, value) {
         // player_id: playerID // если нужно
     };
     ws.send(JSON.stringify(move));
+}
+
+function updateLives(lives) {
+    document.getElementById("lives").textContent = lives;
 }
 </script>
 
