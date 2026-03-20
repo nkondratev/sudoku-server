@@ -42,10 +42,21 @@ func (s Sudoku) NewSolution() Sudoku {
 	return s
 }
 
+func (s *Sudoku) Compare(grid Sudoku) (mistakes int) {
+	for i := range s.Grid {
+		for j := range s.Grid[i] {
+			if s.Grid[i][j] != 0 && s.Grid[i][j] != grid.Grid[i][j] {
+				mistakes++
+			}
+		}
+	}
+	return
+}
+
 func makeGrid() [][]int {
 	grid := make([][]int, 9)
 	for i := range grid {
-		grid[i] = make([]int, 0)
+		grid[i] = make([]int, 9)
 	}
 	return grid
 }
