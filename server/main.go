@@ -50,7 +50,7 @@ func main() {
 			log.Printf("%v", err)
 			return
 		}
-		server.Players()[s].Puzzle.Grid = moveDTO.Sudoku.Grid
+		server.Players[s].Puzzle.Grid = moveDTO.Sudoku.Grid
 		room, err := server.FindRoom(s)
 		if err != nil {
 			log.Printf("%v", err)

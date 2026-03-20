@@ -5,32 +5,30 @@ import (
 	"time"
 )
 
-const (
-	countPlayers = 2
-)
+const ()
 
 type Puzzle struct {
-	board    sudoku.Sudoku
-	solution sudoku.Sudoku
+	Board    sudoku.Sudoku
+	Solution sudoku.Sudoku
 }
 
 func HandleRooms(player chan *Player, game chan *Room) {
 	for {
 		room := NewRoom()
-		for i := range room.players {
-			room.players[i] = <-player
+		for i := range room.Players {
+			room.Players[i] = <-player
 		}
 		game <- room
 	}
 }
 
 func StartGame(r *Room) {
-	for _, p := range r.players {
+	for _, p := range r.Players {
 		if p == nil {
 			continue
 		}
 
-		p.Puzzle = r.puzzle.board
+		p.Puzzle = r.Puzzle.Board
 
 		p.Conn.WebsocketConnection().WriteJSON(map[string]any{
 			"puzzle": p.Puzzle,
