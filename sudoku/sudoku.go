@@ -14,11 +14,14 @@ const (
 	Medium difficulty = 45
 	Hard   difficulty = 50
 
-	size         = 9
-	GameTime     = 10
-	CountPlayers = 2
+	size     = 9
+	GameTime = 10
 )
 
+type Puzzle struct {
+	Board    Sudoku
+	Solution Sudoku
+}
 type Sudoku struct {
 	Grid [][]int
 	Size int
