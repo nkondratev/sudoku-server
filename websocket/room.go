@@ -12,21 +12,20 @@ import (
 var roomId atomic.Int64
 
 type Room struct {
-	Id      int64
-	mu      *sync.RWMutex
-	players []*Player
-	Puzzle  sudoku.Puzzle
+	Id       int64
+	mu       *sync.RWMutex
+	players  []*Player
+	Puzzle   sudoku.Sudoku
+	Solution sudoku.Sudoku
 }
 
 func NewRoom() *Room {
-	s := sudoku.NewSudoku()
+	p, s := sudoku.NewSudoku(sudoku.Easy)
 	return &Room{
-		Id:      roomId.Add(1),
-		players: make([]*Player, 0, 2),
-		Puzzle: sudoku.Puzzle{
-			Board:    s.NewPuzzle(sudoku.Easy),
-			Solution: s.NewSolution(),
-		},
+		Id:       roomId.Add(1),
+		players:  make([]*Player, 0, 2),
+		Puzzle:   p,
+		Solution: s,
 	}
 }
 
@@ -51,7 +50,7 @@ func (r *Room) StartGame() {
 			return
 		}
 
-		p.Puzzle = r.Puzzle.Board
+		p.Puzzle = r.Puzzle
 
 		data, err := json.Marshal(gin.H{
 			"puzzle": p.Puzzle,
