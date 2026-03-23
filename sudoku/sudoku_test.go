@@ -3,9 +3,15 @@ package sudoku
 import "testing"
 
 func TestSudoku(t *testing.T) {
-
-	s := NewSudoku()
-	var grid = *NewSudoku()
-	grid.Grid = copyGrid(s.Grid)
-	removeNumbersUnique(grid, 10)
+	p, s := NewSudoku(Easy)
+	for i := range p {
+		for j := range p[i] {
+			if p[i][j] == 0 {
+				continue
+			}
+			if p[i][j] != s[i][j] {
+				t.Error("bad sudoku")
+			}
+		}
+	}
 }

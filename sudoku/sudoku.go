@@ -1,6 +1,7 @@
 package sudoku
 
 import (
+	"errors"
 	"math/rand"
 	"slices"
 )
@@ -31,16 +32,15 @@ func unUsedInBox(s Sudoku, row, col, num int) bool {
 }
 
 func fillBox(s Sudoku, row, col int) {
-	var num int
 	for i := range boxSize {
 		for j := range boxSize {
 			for {
-				num = rand.Intn(9) + 1
-				if unUsedInBox(s, i, j, num) {
+				num := rand.Intn(9) + 1
+				if unUsedInBox(s, row, col, num) {
+					s[row+i][col+j] = num
 					break
 				}
 			}
-			s[row+i][col+j] = num
 		}
 	}
 }
@@ -97,15 +97,12 @@ func fillRemaining(s Sudoku, i, j int) bool {
 
 func removeDigits(s Sudoku, k difficulty) {
 	for k > 0 {
-		cellId := rand.Intn(81)
-
-		i := cellId / 9
-
-		j := cellId % 9
+		i := rand.Intn(9)
+		j := rand.Intn(9)
 
 		if s[i][j] != 0 {
 			s[i][j] = 0
-			k -= 1
+			k--
 		}
 	}
 }
@@ -114,13 +111,29 @@ func NewSudoku(level difficulty) (puzzle, solution Sudoku) {
 	s := newSudoku()
 	fillDiagonal(s)
 	fillRemaining(s, 0, 0)
-	c := copyGrid(s)
+	c := CopyGrid(s)
 	removeDigits(s, level)
 	return s, c
 
 }
 
-func copyGrid(s Sudoku) Sudoku {
+// Если получил ошибку то значит в судоку допущена ошибка
+func ValidAnswer(puzzle, sudou Sudoku) (row, col int, err error) {
+	p, s := NewSudoku(Easy)
+	for i := range p {
+		for j := range p[i] {
+			if p[i][j] == 0 {
+				continue
+			}
+			if p[i][j] != s[i][j] {
+				return i, j, nil
+			}
+		}
+	}
+	return -1, -1, errors.New("all good")
+}
+
+func CopyGrid(s Sudoku) Sudoku {
 	c := make(Sudoku, size)
 	for i := range s {
 		c[i] = make([]int, size)
