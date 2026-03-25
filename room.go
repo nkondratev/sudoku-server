@@ -1,8 +1,6 @@
 package main
 
-import (
-	"sudoku-server/sudoku"
-)
+import "sudoku-server/sudoku"
 
 const countPlayers = 2
 

@@ -13,15 +13,19 @@ const addr = ":8080"
 
 func main() {
 
+	var hub = make([]*Room, 0, 1024)
+
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.Default()
 	m := melody.New()
 	playerCh := make(chan *Player)
-	roomCh := make(chan *Room)
 
 	go func() {
+
 		var room *Room
+
 		for {
+
 			room = NewRoom()
 			log.Println("new room")
 
@@ -48,8 +52,7 @@ func main() {
 
 			log.Println("data is sented")
 
-			roomCh <- room
-
+			hub = append(hub, room)
 		}
 	}()
 
@@ -64,43 +67,64 @@ func main() {
 	})
 
 	m.HandleMessage(func(s *melody.Session, msg []byte) {
-		log.Println("get message")
-		clientMessage := &SendMesageDTO{}
 
-		if err := json.Unmarshal(msg, clientMessage); err != nil {
-			log.Println("cannot read msg")
-		}
+		go func() {
 
-		room := <-roomCh
+			log.Println("get message")
+			clientMessage := &MessageDTO{}
 
-		//TODO find player
-		row, col, err := sudoku.ValidAnswer(clientMessage.Puzzle, room.Puzzle)
-		if err != nil {
-		}
-		serverMessage := GetMessageDTO{
-			Row: row,
-			Col: col,
-		}
-		for _, p := range room.players {
-			if p.Session == s {
-				p.Lives -= 1
+			if err := json.Unmarshal(msg, clientMessage); err != nil {
+				log.Println("cannot read msg")
+				return
 			}
-		}
 
-		s.Write()
-		//TODO
+			var room *Room
+			var player *Player
+
+			var isFind bool = false
+			for _, r := range hub {
+				if !isFind {
+					for _, p := range r.players {
+						if p.Session == s {
+							room = r
+							player = p
+							isFind = true
+							break
+						}
+					}
+				} else {
+					break
+				}
+			}
+
+			row, col, err := sudoku.ValidAnswer(clientMessage.Puzzle, room.Puzzle)
+			if err != nil {
+				player.Lives -= 1
+			}
+
+			serverMessage := SendMessageDTO{
+				Row:      row,
+				Col:      col,
+				Lives:    player.Lives,
+				Puzzle:   player.Puzzle,
+				IsSolved: sudoku.Equal(player.Puzzle, room.Solution),
+			}
+
+			jsonData, err := json.Marshal(serverMessage)
+			if err != nil {
+				//TODO
+			}
+
+			s.Write(jsonData)
+
+		}()
+
 	})
 
 	r.GET("/ws", func(ctx *gin.Context) {
 		m.HandleRequest(ctx.Writer, ctx.Request)
 	})
 
-	r.POST("/finish", func(ctx *gin.Context) {
-		log.Println("game is ended")
-		//TODO
-	})
-
 	log.Println("server is started")
-
 	r.Run(addr)
 }

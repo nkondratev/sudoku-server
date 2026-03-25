@@ -31,6 +31,17 @@ func unUsedInBox(s Sudoku, row, col, num int) bool {
 	return true
 }
 
+func Equal(puzzle, solution Sudoku) bool {
+	for i := range puzzle {
+		for j := range puzzle[i] {
+			if puzzle[i][j] != solution[i][j] {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 func fillBox(s Sudoku, row, col int) {
 	for i := range boxSize {
 		for j := range boxSize {
