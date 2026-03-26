@@ -36,7 +36,7 @@ func main() {
 			}
 
 			for _, p := range room.players {
-				p.Session.Set("room", room)
+				p.Session.Set(room.Id(), room)
 			}
 
 			jsonData, err := json.Marshal(room.Puzzle)
@@ -58,9 +58,10 @@ func main() {
 	}()
 
 	m.HandleConnect(func(s *melody.Session) {
+		addr := s.RemoteAddr()
 		player := NewPlayer(s)
 		log.Printf("new player")
-		s.Set("player", player)
+		s.Set(addr.String(), player)
 		go func() { playerCh <- player }()
 	})
 
@@ -78,7 +79,7 @@ func main() {
 			return
 		}
 
-		p, _ := s.Get("player")
+		p, _ := s.Get(s.Request.RemoteAddr)
 		r, _ := s.Get("room")
 
 		player := p.(*Player)
