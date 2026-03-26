@@ -13,8 +13,6 @@ const addr = ":8080"
 
 func main() {
 
-	var hub = make([]*Room, 0, 1024)
-
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.Default()
 	m := melody.New()
@@ -37,6 +35,10 @@ func main() {
 				player.Puzzle = sudoku.CopyGrid(room.Puzzle)
 			}
 
+			for _, p := range room.players {
+				p.Session.Set("room", room)
+			}
+
 			jsonData, err := json.Marshal(room.Puzzle)
 			if err != nil {
 				for _, player := range room.players {
@@ -52,13 +54,13 @@ func main() {
 
 			log.Println("data is sented")
 
-			hub = append(hub, room)
 		}
 	}()
 
 	m.HandleConnect(func(s *melody.Session) {
 		player := NewPlayer(s)
 		log.Printf("new player")
+		s.Set("player", player)
 		go func() { playerCh <- player }()
 	})
 
@@ -68,56 +70,41 @@ func main() {
 
 	m.HandleMessage(func(s *melody.Session, msg []byte) {
 
-		go func() {
+		log.Println("get message")
+		clientMessage := &MessageDTO{}
 
-			log.Println("get message")
-			clientMessage := &MessageDTO{}
+		if err := json.Unmarshal(msg, clientMessage); err != nil {
+			log.Println("cannot read msg")
+			return
+		}
 
-			if err := json.Unmarshal(msg, clientMessage); err != nil {
-				log.Println("cannot read msg")
-				return
-			}
+		p, _ := s.Get("player")
+		r, _ := s.Get("room")
 
-			var room *Room
-			var player *Player
+		player := p.(*Player)
+		room := r.(*Room)
 
-			var isFind bool = false
-			for _, r := range hub {
-				if !isFind {
-					for _, p := range r.players {
-						if p.Session == s {
-							room = r
-							player = p
-							isFind = true
-							break
-						}
-					}
-				} else {
-					break
-				}
-			}
+		row, col, err := sudoku.ValidAnswer(clientMessage.Puzzle, room.Puzzle)
+		if err != nil {
+			player.Lives -= 1
+		}
 
-			row, col, err := sudoku.ValidAnswer(clientMessage.Puzzle, room.Puzzle)
-			if err != nil {
-				player.Lives -= 1
-			}
+		isSolved := sudoku.Equal(player.Puzzle, room.Solution)
 
-			serverMessage := SendMessageDTO{
-				Row:      row,
-				Col:      col,
-				Lives:    player.Lives,
-				Puzzle:   player.Puzzle,
-				IsSolved: sudoku.Equal(player.Puzzle, room.Solution),
-			}
+		serverMessage := SendMessageDTO{
+			Row:      row,
+			Col:      col,
+			Lives:    player.Lives,
+			Puzzle:   player.Puzzle,
+			IsSolved: isSolved,
+		}
 
-			jsonData, err := json.Marshal(serverMessage)
-			if err != nil {
-				//TODO
-			}
+		jsonData, _ := json.Marshal(serverMessage)
+		s.Write(jsonData)
 
-			s.Write(jsonData)
-
-		}()
+		if isSolved {
+			log.Printf("player is %v won", player.Session.RemoteAddr())
+		}
 
 	})
 
