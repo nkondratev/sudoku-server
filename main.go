@@ -9,104 +9,173 @@ import (
 	"github.com/olahol/melody"
 )
 
-const addr = ":8080"
+const (
+	addr         = ":8080"
+	RoomString   = "room"
+	PlayerString = "player"
+)
 
 func main() {
 
-	gin.SetMode(gin.ReleaseMode)
 	r := gin.Default()
+
 	m := melody.New()
 	playerCh := make(chan *Player)
 
 	go func() {
-
 		var room *Room
-
 		for {
 
+			// Создаем новую комнату
 			room = NewRoom()
-			log.Println("new room")
 
+			// Заполняем её двумя игроками. Назначаем комнату игроку
 			for i := range room.players {
 				room.players[i] = <-playerCh
+				room.players[i].Session.Set(RoomString, room)
 			}
 
-			for _, player := range room.players {
-				player.Puzzle = sudoku.CopyGrid(room.Puzzle)
+			for i := range room.players {
+				room.players[i].Puzzle = sudoku.CopyGrid(room.Puzzle)
 			}
 
-			for _, p := range room.players {
-				p.Session.Set(room.Id(), room)
+			fm := &FirstMessage{
+				Puzzle: room.Puzzle,
+				Time:   gameTime,
 			}
 
-			jsonData, err := json.Marshal(room.Puzzle)
-			if err != nil {
-				for _, player := range room.players {
-					player.Session.Close()
-				}
-				log.Println("game is interrupted")
-				continue
-			}
-
+			jsonData, _ := json.Marshal(fm)
 			for i := range room.players {
 				room.players[i].Session.Write(jsonData)
 			}
-
-			log.Println("data is sented")
 
 		}
 	}()
 
 	m.HandleConnect(func(s *melody.Session) {
-		addr := s.RemoteAddr()
+
+		// Создаем нового игрока и передаем в канал для послания первого сообщения
 		player := NewPlayer(s)
 		log.Printf("new player")
-		s.Set(addr.String(), player)
+		s.Set(PlayerString, player)
 		go func() { playerCh <- player }()
-	})
-
-	m.HandleDisconnect(func(s *melody.Session) {
-		log.Printf("player disconnected")
 	})
 
 	m.HandleMessage(func(s *melody.Session, msg []byte) {
 
-		log.Println("get message")
-		clientMessage := &MessageDTO{}
+		// Нахохим игрока по его адресу
+		player := s.MustGet(PlayerString).(*Player)
 
-		if err := json.Unmarshal(msg, clientMessage); err != nil {
-			log.Println("cannot read msg")
+		// Нахохим комнату по roomId, что есть у игрока
+		room := s.MustGet(RoomString).(*Room)
+
+		// Ответ от клиента
+		msgDTO := &MessageDTO{}
+		json.Unmarshal(msg, msgDTO)
+
+		// Завершаем соединение если это конец игры
+		if msgDTO.IsEnd {
+			room.Mu.Lock()
+			if room.Closed {
+				room.Mu.Unlock()
+				log.Println("room is closed")
+				return
+			}
+			room.Closed = true
+
+			players := room.players
+			room.Mu.Unlock()
+
+			for _, p := range players {
+				p.Session.Close()
+			}
 			return
 		}
 
-		p, _ := s.Get(s.Request.RemoteAddr)
-		r, _ := s.Get("room")
+		// Назнаначем игроку обновленный пазл
+		player.Mu.Lock()
+		player.Puzzle = msgDTO.Puzzle
+		puzzleCopy := sudoku.CopyGrid(player.Puzzle)
+		player.Mu.Unlock()
 
-		player := p.(*Player)
-		room := r.(*Room)
+		// Проверяем решено ли судоку у игрока
+		solved := sudoku.IsSolved(puzzleCopy, room.Solution)
 
-		row, col, err := sudoku.ValidAnswer(clientMessage.Puzzle, room.Puzzle)
-		if err != nil {
-			player.Lives -= 1
+		// Индексы ошибки. Будут равны -1 -1 если ошибок нету
+		row, col := sudoku.ValidAnswer(puzzleCopy, room.Solution)
+
+		// Второй игрок нужен чтобы клиент мог высчитать сколько его противник заполнил клеток
+		var secondPlayer *Player
+
+		// Находим второго игрока
+		for _, p := range room.players {
+			if p != player {
+				secondPlayer = p
+				break
+			}
 		}
 
-		isSolved := sudoku.Equal(player.Puzzle, room.Solution)
+		// Если второго игрока нету то завершаем
+		if secondPlayer == nil {
+			return
+		}
 
-		serverMessage := SendMessageDTO{
+		// Получаем пазл второго игроков
+		secondPlayer.Mu.Lock()
+		secondPuzzle := sudoku.CopyGrid(secondPlayer.Puzzle)
+		secondPlayer.Mu.Unlock()
+
+		// Заполняем структуру сообщения
+		sendmsgDTO := &SendMessageDTO{
 			Row:      row,
 			Col:      col,
-			Lives:    player.Lives,
-			Puzzle:   player.Puzzle,
-			IsSolved: isSolved,
+			IsSolved: solved,
+			Puzzle:   secondPuzzle,
 		}
 
-		jsonData, _ := json.Marshal(serverMessage)
-		s.Write(jsonData)
+		// Отправляем данные клиенту
+		jsonData, _ := json.Marshal(sendmsgDTO)
+		player.Session.Write(jsonData)
 
-		if isSolved {
-			log.Printf("player is %v won", player.Session.RemoteAddr())
+	})
+
+	m.HandleDisconnect(func(s *melody.Session) {
+		// Пытаемся получить игрока
+		p, ok := s.Get(PlayerString)
+		if !ok {
+			return
 		}
 
+		// Делаем привидение к игроку
+		player := p.(*Player)
+
+		// Пытаемся получить комнату
+		r, ok := s.Get(RoomString)
+		if !ok {
+			return
+		}
+
+		// Делаем привидение к комнате
+		room := r.(*Room)
+
+		/* Закрываем комнату если открыта, иначе пропускаем так как соединения
+		уже закрыты*/
+		room.Mu.Lock()
+		if room.Closed {
+			room.Mu.Unlock()
+			return
+		}
+		room.Closed = true
+
+		players := room.players
+		room.Mu.Unlock()
+
+		// Закрыаем все соединения
+		for _, p := range players {
+			if p != player {
+				p.Session.Close()
+			}
+		}
 	})
 
 	r.GET("/ws", func(ctx *gin.Context) {

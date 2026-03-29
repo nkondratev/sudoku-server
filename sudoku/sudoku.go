@@ -20,6 +20,17 @@ const (
 
 type Sudoku [][]int
 
+func IsSolved(puzzle, solution Sudoku) bool {
+	for i := range puzzle {
+		for j := range puzzle[i] {
+			if puzzle[i][j] != solution[i][j] {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 func unUsedInBox(s Sudoku, row, col, num int) bool {
 	for i := range boxSize {
 		for j := range boxSize {
@@ -128,8 +139,8 @@ func NewSudoku(level difficulty) (puzzle, solution Sudoku) {
 
 }
 
-// Если получил ошибку то значит в судоку допущена ошибка
-func ValidAnswer(puzzle, sudou Sudoku) (row, col int, err error) {
+// Возвращает -1 -1 если не была найдена ошибка
+func ValidAnswer(puzzle, sudou Sudoku) (row, col int) {
 	p, s := NewSudoku(Easy)
 	for i := range p {
 		for j := range p[i] {
@@ -137,11 +148,11 @@ func ValidAnswer(puzzle, sudou Sudoku) (row, col int, err error) {
 				continue
 			}
 			if p[i][j] != s[i][j] {
-				return i, j, nil
+				return i, j
 			}
 		}
 	}
-	return -1, -1, errors.New("all good")
+	return -1, -1
 }
 
 func CopyGrid(s Sudoku) Sudoku {
