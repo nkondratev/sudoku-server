@@ -9,7 +9,8 @@ build: main.go
 	@go build .
 
 test: main.go
-	@go test -v ./...
+	@go clean -testcache
+	@go test  ./...
 
 clean: $(TARGET)
 	@rm $(TARGET)

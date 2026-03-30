@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"log"
+	"os"
 	"sudoku-server/sudoku"
 
 	"github.com/gin-gonic/gin"
@@ -16,6 +17,14 @@ const (
 )
 
 func main() {
+
+	f, err := os.OpenFile("logs", os.O_CREATE|os.O_RDWR|os.O_APPEND, 0640)
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
+	defer f.Close()
+
+	logger := log.New(os.Stdout, "", log.Ldate|log.Ltime)
 
 	gin.SetMode(gin.ReleaseMode)
 
@@ -57,7 +66,9 @@ func main() {
 
 		// Создаем нового игрока и передаем в канал для послания первого сообщения
 		player := NewPlayer(s)
-		log.Printf("new player")
+
+		logger.Println(LogNewPlayer)
+
 		s.Set(PlayerString, player)
 		go func() { playerCh <- player }()
 	})
@@ -79,7 +90,10 @@ func main() {
 			room.Mu.Lock()
 			if room.Closed {
 				room.Mu.Unlock()
-				log.Println("room is closed")
+
+				log.Print(LogCloseRoom)
+				logger.Writer().Write([]byte(LogCloseRoom))
+
 				return
 			}
 			room.Closed = true
@@ -183,6 +197,6 @@ func main() {
 		m.HandleRequest(ctx.Writer, ctx.Request)
 	})
 
-	log.Println("server is started")
+	logger.Println(LogStartServer)
 	r.Run(addr)
 }
