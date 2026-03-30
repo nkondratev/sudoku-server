@@ -1,7 +1,6 @@
 package sudoku
 
 import (
-	"errors"
 	"math/rand"
 	"slices"
 )

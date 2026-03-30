@@ -17,8 +17,9 @@ const (
 
 func main() {
 
-	r := gin.Default()
+	gin.SetMode(gin.ReleaseMode)
 
+	r := gin.Default()
 	m := melody.New()
 	playerCh := make(chan *Player)
 
