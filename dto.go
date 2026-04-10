@@ -13,6 +13,7 @@ type MessageDTO struct {
 
 // Это сообщение от сервера к клиенту
 type SendMessageDTO struct {
+	IsValid  bool          `json:"is_valid"`
 	Row      int           `json:"row"`
 	Col      int           `json:"col"`
 	Puzzle   sudoku.Sudoku `json:"sudoku"`

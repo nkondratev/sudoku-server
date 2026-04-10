@@ -117,7 +117,7 @@ func main() {
 		solved := sudoku.IsSolved(puzzleCopy, room.Solution)
 
 		// Индексы ошибки. Будут равны -1 -1 если ошибок нету
-		row, col := sudoku.ValidAnswer(puzzleCopy, room.Solution)
+		valid := sudoku.ValidAnswer(puzzleCopy, room.Solution)
 
 		// Второй игрок нужен чтобы клиент мог высчитать сколько его противник заполнил клеток
 		var secondPlayer *Player
@@ -142,8 +142,7 @@ func main() {
 
 		// Заполняем структуру сообщения
 		sendmsgDTO := &SendMessageDTO{
-			Row:      row,
-			Col:      col,
+			IsValid:  valid,
 			IsSolved: solved,
 			Puzzle:   secondPuzzle,
 		}

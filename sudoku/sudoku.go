@@ -39,15 +39,15 @@ func NewSudoku(level difficulty) (puzzle, solution Sudoku) {
 	return s, c
 }
 
-func ValidAnswer(puzzle, solution Sudoku) (row, col int) {
+func ValidAnswer(puzzle, solution Sudoku) bool {
 	for i := range puzzle {
 		for j := range puzzle[i] {
 			if puzzle[i][j] != 0 && puzzle[i][j] != solution[i][j] {
-				return i, j
+				return false
 			}
 		}
 	}
-	return -1, -1
+	return true
 }
 
 func CopyGrid(s Sudoku) Sudoku {
