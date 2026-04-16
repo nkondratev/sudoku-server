@@ -20,7 +20,6 @@ const (
 )
 
 func main() {
-
 	logDir := "./logs/"
 	logFile := filepath.Join(logDir, "logs")
 
@@ -34,129 +33,107 @@ func main() {
 		log.Fatalf("failed to open log file: %v", err)
 	}
 	defer f.Close()
-	stream := io.MultiWriter(os.Stdout, f)
 
+	stream := io.MultiWriter(os.Stdout, f)
 	logger := slog.New(slog.NewJSONHandler(stream, nil))
 
 	gin.SetMode(gin.ReleaseMode)
 
 	r := gin.Default()
 	m := melody.New()
-	playerCh := make(chan *Player)
 
-	go func() {
-		var room *Room
-		for {
+	server := &Server{
+		m:        m,
+		playerCh: make(chan *Player, 100),
+		logger:   logger,
+	}
 
-			room = NewRoom()
-			logger.Info("room creates")
-
-			for i := range room.players {
-				room.players[i] = <-playerCh
-				room.players[i].Session.Set(RoomString, room)
-			}
-
-			for i := range room.players {
-				room.players[i].Puzzle = sudoku.CopyGrid(room.Puzzle)
-			}
-
-			fm := &FirstMessage{
-				Puzzle: room.Puzzle,
-			}
-
-			jsonData, _ := json.Marshal(fm)
-			for i := range room.players {
-				room.players[i].Session.Write(jsonData)
-			}
-			logger.Info("puzzle sends to players")
-		}
-	}()
+	go server.matchmakingLoop()
 
 	m.HandleConnect(func(s *melody.Session) {
 		player := NewPlayer(s)
-		logger.Info("player connects from client")
+		logger.Info("player connected")
 
 		s.Set(PlayerString, player)
-		go func() { playerCh <- player }()
+
+		// неблокирующая отправка
+		select {
+		case server.playerCh <- player:
+		default:
+			logger.Warn("player channel full")
+			_ = s.Close()
+		}
 	})
 
 	m.HandleMessage(func(s *melody.Session, msg []byte) {
+		playerAny, ok1 := s.Get(PlayerString)
+		roomAny, ok2 := s.Get(RoomString)
 
-		player := s.MustGet(PlayerString).(*Player)
-		room := s.MustGet(RoomString).(*Room)
+		if !ok1 || !ok2 {
+			return
+		}
 
-		msgDTO := &MessageDTO{}
-		json.Unmarshal(msg, msgDTO)
-		logger.Info("message accepts from client")
+		player := playerAny.(*Player)
+		room := roomAny.(*Room)
+
+		var msgDTO MessageDTO
+		if err := json.Unmarshal(msg, &msgDTO); err != nil {
+			return
+		}
 
 		player.Mu.Lock()
 		player.Puzzle = msgDTO.Puzzle
-		puzzleCopy := sudoku.CopyGrid(player.Puzzle)
+		copyPuzzle := sudoku.CopyGrid(player.Puzzle)
 		player.Mu.Unlock()
 
-		solved := sudoku.IsSolved(puzzleCopy, room.Solution)
+		solved := sudoku.IsSolved(copyPuzzle, room.Solution)
 
-		sendmsgDTO := &SendMessageDTO{
+		resp := SendMessageDTO{
 			FullPercent: player.Puzzle.FullPercent(room.Solution),
 			IsSolved:    solved,
 		}
-		logger.Info("game finishes")
 
-		jsonData, _ := json.Marshal(sendmsgDTO)
-		player.Session.Write(jsonData)
-		room.Mu.Lock()
-		if room.Closed {
-			room.Mu.Unlock()
-			logger.Info("room closes")
-			return
-		}
-		room.Closed = true
-		players := room.players
-		room.Mu.Unlock()
+		data, _ := json.Marshal(resp)
+		_ = player.Session.Write(data)
 
-		for _, p := range players {
-			p.Session.Close()
+		logger.Info("message processed")
+
+		// если решено — закрываем комнату один раз
+		if solved {
+			room.Close(logger)
 		}
-		logger.Info("players disconnet")
 	})
 
 	m.HandleDisconnect(func(s *melody.Session) {
-		p, ok := s.Get(PlayerString)
+		pAny, ok := s.Get(PlayerString)
 		if !ok {
 			return
 		}
-		player := p.(*Player)
+		player := pAny.(*Player)
 
-		r, ok := s.Get(RoomString)
+		roomAny, ok := s.Get(RoomString)
 		if !ok {
 			return
 		}
-		room := r.(*Room)
+		room := roomAny.(*Room)
 
-		room.Mu.Lock()
-		if room.Closed {
-			room.Mu.Unlock()
-			return
-		}
-		room.Closed = true
-		players := room.players
-		room.Mu.Unlock()
+		logger.Info("player disconnected")
 
-		for _, p := range players {
-			if p != player {
-				p.Session.Close()
-			}
-		}
-		logger.Info("players disconnet")
+		room.Close(logger)
+
+		_ = player
 	})
 
 	r.GET("/ws", func(ctx *gin.Context) {
 		m.HandleRequest(ctx.Writer, ctx.Request)
 	})
 
-	logger.Info("server starts")
+	logger.Info("server started")
+
 	if err := r.Run(addr); err != nil {
-		logger.Error("failed to start server ")
+		logger.Error("server failed", "err", err)
 		panic(err)
 	}
 }
+
+// MATCHMAKING LOOP
