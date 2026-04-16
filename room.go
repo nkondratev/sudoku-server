@@ -12,6 +12,7 @@ type Room struct {
 	Puzzle   [][]int
 	Solution [][]int
 	Closed   bool
+	IsEnd    bool
 }
 
 func (r *Room) Close(logger *slog.Logger) {

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"app/sudoku"
 	"encoding/json"
 	"io"
 	"log"
@@ -73,8 +72,25 @@ func main() {
 			return
 		}
 
-		player := playerAny.(*Player)
 		room := roomAny.(*Room)
+
+		room.Mu.Lock()
+		if room.IsEnd {
+			room.Mu.Unlock()
+			return
+		}
+
+		room.IsEnd = true
+		room.Mu.Unlock()
+
+		player1 := playerAny.(*Player)
+		var player2 *Player
+		for _, p := range room.players {
+			if player1.Session != p.Session {
+				player2 = p
+				break
+			}
+		}
 
 		var msgDTO MessageDTO
 		if err := json.Unmarshal(msg, &msgDTO); err != nil {
@@ -82,29 +98,71 @@ func main() {
 			return
 		}
 
-		logger.Info("player sudoku", "судоку", sudoku.PrettyPrint(msgDTO.Puzzle))
-
-		player.Mu.Lock()
-		player.Puzzle = msgDTO.Puzzle
-		copyPuzzle := sudoku.CopyGrid(player.Puzzle)
-		player.Mu.Unlock()
-
-		solved := sudoku.IsSolved(copyPuzzle, room.Solution)
-		player.Puzzle.FullPercent(room.Solution)
-
-		resp := MESSAGE{
-			Result: "LOSE",
+		if player2 == nil {
+			player1.Session.Write(func() []byte {
+				data, _ := json.Marshal(MESSAGE{
+					Result: "WIN",
+				})
+				return data
+			}(),
+			)
+			room.Close(logger)
+			return
 		}
 
-		data, _ := json.Marshal(resp)
-		_ = player.Session.Write(data)
+		player1.Mu.Lock()
+		player1.Puzzle = msgDTO.Puzzle
+		player1.Mu.Unlock()
+
+		percent1 := player1.Puzzle.FullPercent(room.Solution)
+		percent2 := player2.Puzzle.FullPercent(room.Solution)
+
+		switch {
+		case percent1 > percent2:
+			player1.Session.Write(func() []byte {
+				data, _ := json.Marshal(MESSAGE{
+					Result: "WIN",
+				})
+				return data
+			}())
+			player2.Session.Write(func() []byte {
+				data, _ := json.Marshal(MESSAGE{
+					Result: "LOSE",
+				})
+				return data
+			}())
+		case percent1 < percent2:
+			player1.Session.Write(func() []byte {
+				data, _ := json.Marshal(MESSAGE{
+					Result: "LOSE",
+				})
+				return data
+			}())
+			player2.Session.Write(func() []byte {
+				data, _ := json.Marshal(MESSAGE{
+					Result: "WIN",
+				})
+				return data
+			}())
+		case percent1 == percent2:
+			player1.Session.Write(func() []byte {
+				data, _ := json.Marshal(MESSAGE{
+					Result: "DRAW",
+				})
+				return data
+			}())
+			player2.Session.Write(func() []byte {
+				data, _ := json.Marshal(MESSAGE{
+					Result: "DRAW",
+				})
+				return data
+			}())
+
+		}
 
 		logger.Info("message processed")
 
-		// если решено — закрываем комнату один раз
-		if solved {
-			room.Close(logger)
-		}
+		room.Close(logger)
 	})
 
 	m.HandleDisconnect(func(s *melody.Session) {
