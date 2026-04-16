@@ -1,7 +1,9 @@
 package sudoku
 
 import (
+	"fmt"
 	"math/rand"
+	"strings"
 )
 
 type difficulty int
@@ -17,6 +19,53 @@ const (
 )
 
 type Sudoku [][]int
+
+func PrettyPrint(board [][]int) string {
+	var sb strings.Builder
+
+	for i := 0; i < len(board); i++ {
+		if i%3 == 0 && i != 0 {
+			sb.WriteString("------+-------+------\n")
+		}
+
+		for j := 0; j < len(board[i]); j++ {
+			if j%3 == 0 && j != 0 {
+				sb.WriteString("| ")
+			}
+
+			if board[i][j] == 0 {
+				sb.WriteString(". ")
+			} else {
+				sb.WriteString(fmt.Sprintf("%d ", board[i][j]))
+			}
+		}
+
+		sb.WriteByte('\n')
+	}
+
+	return sb.String()
+}
+
+func (board Sudoku) PrettyPrint() {
+	for i := 0; i < len(board); i++ {
+		if i%3 == 0 && i != 0 {
+			fmt.Println("------+-------+------")
+		}
+
+		for j := 0; j < len(board[i]); j++ {
+			if j%3 == 0 && j != 0 {
+				fmt.Print("| ")
+			}
+
+			if board[i][j] == 0 {
+				fmt.Print(". ")
+			} else {
+				fmt.Printf("%d ", board[i][j])
+			}
+		}
+		fmt.Println()
+	}
+}
 
 // =========================
 // PUBLIC API

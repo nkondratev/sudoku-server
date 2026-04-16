@@ -31,7 +31,7 @@ func (r *Room) Close(logger *slog.Logger) {
 	logger.Info("room closed")
 }
 func NewRoom() *Room {
-	p, s := sudoku.NewSudoku(sudoku.Easy)
+	p, s := sudoku.NewSudoku(sudoku.Medium)
 	return &Room{
 		Puzzle:   p,
 		Solution: s,

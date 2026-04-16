@@ -78,8 +78,11 @@ func main() {
 
 		var msgDTO MessageDTO
 		if err := json.Unmarshal(msg, &msgDTO); err != nil {
+			logger.Error("cannot get MessageDTO")
 			return
 		}
+
+		logger.Info("player sudoku", "судоку", sudoku.PrettyPrint(msgDTO.Puzzle))
 
 		player.Mu.Lock()
 		player.Puzzle = msgDTO.Puzzle
@@ -87,10 +90,10 @@ func main() {
 		player.Mu.Unlock()
 
 		solved := sudoku.IsSolved(copyPuzzle, room.Solution)
+		player.Puzzle.FullPercent(room.Solution)
 
-		resp := SendMessageDTO{
-			FullPercent: player.Puzzle.FullPercent(room.Solution),
-			IsSolved:    solved,
+		resp := MESSAGE{
+			Result: "LOSE",
 		}
 
 		data, _ := json.Marshal(resp)
