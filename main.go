@@ -86,56 +86,33 @@ func main() {
 		msgDTO := &MessageDTO{}
 		json.Unmarshal(msg, msgDTO)
 
-		if msgDTO.IsEnd {
-			room.Mu.Lock()
-			if room.Closed {
-				room.Mu.Unlock()
-				logger.Println("room is closed")
-				return
-			}
-			room.Closed = true
-			players := room.players
-			room.Mu.Unlock()
-
-			for _, p := range players {
-				p.Session.Close()
-			}
-			return
-		}
-
 		player.Mu.Lock()
 		player.Puzzle = msgDTO.Puzzle
 		puzzleCopy := sudoku.CopyGrid(player.Puzzle)
 		player.Mu.Unlock()
 
 		solved := sudoku.IsSolved(puzzleCopy, room.Solution)
-		valid := sudoku.ValidAnswer(puzzleCopy, room.Solution)
-
-		var secondPlayer *Player
-		for _, p := range room.players {
-			if p != player {
-				secondPlayer = p
-				break
-			}
-		}
-
-		if secondPlayer == nil {
-			return
-		}
-
-		// Получаем пазл второго игроков
-		secondPlayer.Mu.Lock()
-		secondPuzzle := sudoku.CopyGrid(secondPlayer.Puzzle)
-		secondPlayer.Mu.Unlock()
 
 		sendmsgDTO := &SendMessageDTO{
-			IsValid:  valid,
-			IsSolved: solved,
-			Puzzle:   secondPuzzle,
+			FullPercent: player.Puzzle.FullPercent(room.Solution),
+			IsSolved:    solved,
 		}
 
 		jsonData, _ := json.Marshal(sendmsgDTO)
 		player.Session.Write(jsonData)
+		room.Mu.Lock()
+		if room.Closed {
+			room.Mu.Unlock()
+			logger.Println("room is closed")
+			return
+		}
+		room.Closed = true
+		players := room.players
+		room.Mu.Unlock()
+
+		for _, p := range players {
+			p.Session.Close()
+		}
 	})
 
 	m.HandleDisconnect(func(s *melody.Session) {

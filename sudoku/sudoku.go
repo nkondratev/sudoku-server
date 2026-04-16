@@ -11,8 +11,9 @@ const (
 	Medium difficulty = 40
 	Hard   difficulty = 50
 
-	size    = 9
-	boxSize = 3
+	size       = 9
+	boxSize    = 3
+	countCells = 81
 )
 
 type Sudoku [][]int
@@ -200,4 +201,17 @@ func newSudoku() Sudoku {
 		s[i] = make([]int, size)
 	}
 	return s
+}
+
+func (s Sudoku) FullPercent(solution Sudoku) float64 {
+	var countValid float64
+	for i := range s {
+		for j := range s[i] {
+			if s[i][j] == solution[i][j] {
+				countValid++
+			}
+		}
+	}
+	percent := countValid / countCells * 100
+	return percent
 }
