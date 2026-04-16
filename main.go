@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -35,7 +36,7 @@ func main() {
 	defer f.Close()
 	stream := io.MultiWriter(os.Stdout, f)
 
-	logger := log.New(stream, "", log.Ldate|log.Ltime)
+	logger := slog.New(slog.NewJSONHandler(stream, nil))
 
 	gin.SetMode(gin.ReleaseMode)
 
@@ -48,6 +49,7 @@ func main() {
 		for {
 
 			room = NewRoom()
+			logger.Info("room creates")
 
 			for i := range room.players {
 				room.players[i] = <-playerCh
@@ -66,13 +68,13 @@ func main() {
 			for i := range room.players {
 				room.players[i].Session.Write(jsonData)
 			}
-			logger.Println("data is sented to player")
+			logger.Info("puzzle sends to players")
 		}
 	}()
 
 	m.HandleConnect(func(s *melody.Session) {
 		player := NewPlayer(s)
-		logger.Println("new player connected")
+		logger.Info("player connects from client")
 
 		s.Set(PlayerString, player)
 		go func() { playerCh <- player }()
@@ -85,6 +87,7 @@ func main() {
 
 		msgDTO := &MessageDTO{}
 		json.Unmarshal(msg, msgDTO)
+		logger.Info("message accepts from client")
 
 		player.Mu.Lock()
 		player.Puzzle = msgDTO.Puzzle
@@ -97,13 +100,14 @@ func main() {
 			FullPercent: player.Puzzle.FullPercent(room.Solution),
 			IsSolved:    solved,
 		}
+		logger.Info("game finishes")
 
 		jsonData, _ := json.Marshal(sendmsgDTO)
 		player.Session.Write(jsonData)
 		room.Mu.Lock()
 		if room.Closed {
 			room.Mu.Unlock()
-			logger.Println("room is closed")
+			logger.Info("room closes")
 			return
 		}
 		room.Closed = true
@@ -113,6 +117,7 @@ func main() {
 		for _, p := range players {
 			p.Session.Close()
 		}
+		logger.Info("players disconnet")
 	})
 
 	m.HandleDisconnect(func(s *melody.Session) {
@@ -142,14 +147,16 @@ func main() {
 				p.Session.Close()
 			}
 		}
+		logger.Info("players disconnet")
 	})
 
 	r.GET("/ws", func(ctx *gin.Context) {
 		m.HandleRequest(ctx.Writer, ctx.Request)
 	})
 
-	logger.Println("server is started")
+	logger.Info("server starts")
 	if err := r.Run(addr); err != nil {
-		panic("cannot start server " + err.Error())
+		logger.Error("failed to start server ")
+		panic(err)
 	}
 }
